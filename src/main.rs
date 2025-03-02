@@ -1,10 +1,13 @@
 mod error;
 use error::Error;
+mod tmux;
 
 use std::{
+    env::VarError,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use serde::Deserialize;
@@ -50,6 +53,7 @@ impl SearchPath {
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct Settings {
     default_depth: u8,
+    picker: Option<String>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -63,8 +67,8 @@ impl Config {
     pub fn try_open() -> Result<Self, Error> {
         let config_file = std::env::var("TMS_CONFIG")
             .map_err(|e| match e {
-                std::env::VarError::NotUnicode(e) => panic!("{e:?}"),
-                std::env::VarError::NotPresent => Error::MissingHome,
+                VarError::NotUnicode(e) => panic!("{e:?}"),
+                VarError::NotPresent => Error::MissingHome,
             })
             .and_then(|path| File::open(path).map_err(|e| Error::FileError(e.to_string())));
 
@@ -95,13 +99,7 @@ impl Config {
         path.read_dir()
             .unwrap()
             .flatten()
-            .filter(|d| {
-                if let Ok(ty) = d.file_type() {
-                    ty.is_dir()
-                } else {
-                    false
-                }
-            })
+            .filter(|d| d.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
             .flat_map(move |e| {
                 let path = e.path();
                 if depth < max_depth {
@@ -154,46 +152,84 @@ impl Config {
     }
 }
 
-fn run_finder(paths: &[PathBuf]) {
-    // let paths = paths.iter()
-    //     .map(|p| p.to_string_lossy().to_string())
-    //     .collect::<Vec<_>>();
-    // let index = dialoguer::FuzzySelect::new()
-    //     .items(&paths)
-    //     .interact()
-    //     .unwrap();
+fn run_finder(Settings { picker, .. }: &Settings, paths: &[PathBuf]) -> Option<PathBuf> {
+    let picker = picker.as_deref().unwrap_or("fzf-tmux -p 50%");
 
-    // println!("{}", paths[index]);
-    use skim::prelude::*;
-    use std::collections::VecDeque;
+    let paths = paths.iter().filter_map(|p| p.to_str());
 
-    let options = SkimOptionsBuilder::default().build().unwrap();
-
-    let mut buf: VecDeque<u8> = VecDeque::default();
+    let mut paths_input = String::new();
     for p in paths {
-        let s = p.display().to_string();
-        let bytes = s.as_bytes();
-        buf.extend(bytes);
-        buf.write_all(b"\n").unwrap();
+        paths_input.push_str(p);
+        paths_input.push('\n');
     }
 
-    let reader = SkimItemReader::default();
-    let reader = reader.of_bufread(buf);
+    let (cmd, args) = picker
+        .split_once(' ')
+        .map(|(cmd, args)| {
+            let args = args.split(' ').collect::<Vec<_>>();
+            (cmd, args)
+        })
+        .unwrap_or((picker, vec![]));
 
-    let items = Skim::run_with(&options, Some(reader))
-        .map(|o| o.selected_items)
-        .unwrap();
+    let mut proc = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to spawn picker command \"{picker}\", {e}"));
 
-    for i in items {
-        println!("{}", i.output())
+    proc.stdin
+        .as_mut()
+        .expect("Failed to get stdin")
+        .write_all(paths_input.as_bytes())
+        .expect("Failed to write to stdin");
+
+    let res = proc
+        .wait_with_output()
+        .expect("Failed to run picker command");
+
+    if res.status.success() {
+        let s = String::from_utf8(res.stdout).expect("Picker output is not UTF-8");
+        let s = &s[..s.len() - 1]; // Strip ending new line
+        let path = PathBuf::from(s);
+        Some(path)
+    } else {
+        None
     }
+}
+
+fn get_dir_name(dir: &Path) -> String {
+    let s = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .expect("Dir is not valid UTF-8");
+
+    s.replace('.', "_")
 }
 
 fn main() {
     let config = Config::try_open().unwrap();
     let paths = config.find_dirs().unwrap();
 
-    run_finder(&paths);
+    let selected_path = if let Some(path) = run_finder(&config.settings, &paths) {
+        path
+    } else {
+        // Exit if picker is canceled
+        return;
+    };
+
+    let path_str = selected_path.to_str().expect("Selected path is not UTF-8");
+    let dir_name = get_dir_name(&selected_path);
+
+    if !tmux::has_session(&dir_name) {
+        tmux::new_session(&dir_name, path_str);
+    }
+
+    if std::env::var("TMUX").is_ok() {
+        tmux::switch(&dir_name);
+    } else {
+        tmux::attach(&dir_name);
+    }
 }
 
 #[cfg(test)]
@@ -216,7 +252,10 @@ mod tests {
         assert_eq!(
             yml,
             Config {
-                settings: Settings { default_depth: 8 },
+                settings: Settings {
+                    default_depth: 8,
+                    picker: None
+                },
                 paths: vec![
                     SearchPath::Simple("first".into()),
                     SearchPath::Complex {
