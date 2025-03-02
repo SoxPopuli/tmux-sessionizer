@@ -1,8 +1,15 @@
 alias br := build-release
 alias tr := test-release
 
+[private]
+list:
+    @ just -l
+
 build-release:
     cargo build --release
 
 test-release: build-release
     cargo test --release
+
+install: test-release
+    cp -v ./target/release/tmux-sessionizer ~/.config/tmux-sessionizer
