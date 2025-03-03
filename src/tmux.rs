@@ -22,7 +22,12 @@ pub fn new_session(name: &str, path: &str) {
 }
 
 pub fn attach(name: &str) {
-    cmd(&["attach", "-t", name]);
+    Command::new("tmux")
+        .args(["attach", "-t", name])
+        .spawn()
+        .expect("Failed to spawn tmux command")
+        .wait()
+        .expect("Failed to attach to tmux session");
 }
 
 pub fn switch(name: &str) {
