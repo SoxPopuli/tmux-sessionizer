@@ -13,3 +13,7 @@ test-release: build-release
 
 install: test-release
     cp -v ./target/release/tmux-sessionizer ~/.config/tmux-sessionizer
+
+
+clean-release:
+    cargo clean -r
