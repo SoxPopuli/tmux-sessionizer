@@ -9,9 +9,19 @@ serde = { version = "1.0.218", features = ["derive"] }
 serde_yml = "0.0.12"
 shellexpand = "3.1.0"
 
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"]}
+
 [profile.release]
 strip = true
 opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[profile.bench]
+debug = true
+
+[[bench]]
+name = "benchmark"
+harness = false
