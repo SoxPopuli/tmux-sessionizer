@@ -122,30 +122,13 @@ impl Config {
         let mut all_paths = vec![];
 
         for p in paths {
-            match p {
-                SearchPath::Simple(p) => {
-                    let path = Path::new(&p);
-                    if !path.exists() {
-                        continue;
-                    }
-
-                    let p = Self::find_dir_recursive(path, 1, self.settings.default_depth);
-                    all_paths.extend(p);
-                }
-                SearchPath::Complex { path, depth } => {
-                    let path = Path::new(&path);
-                    if !path.exists() {
-                        continue;
-                    }
-
-                    let p = Self::find_dir_recursive(
-                        path,
-                        1,
-                        depth.unwrap_or(self.settings.default_depth),
-                    );
-                    all_paths.extend(p);
-                }
+            let path = Path::new(p.path());
+            if !path.exists() {
+                continue;
             }
+            let depth = p.depth(self.settings.default_depth);
+            let p = Self::find_dir_recursive(path, 1, depth);
+            all_paths.extend(p);
         }
 
         Ok(all_paths)
