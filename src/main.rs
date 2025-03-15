@@ -1,7 +1,6 @@
 mod config;
 mod error;
 use config::{Config, Settings};
-use error::Error;
 mod tmux;
 
 use std::{

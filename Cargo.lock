@@ -668,6 +668,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "criterion",
+ "rayon",
  "serde",
  "serde_yml",
  "shellexpand",

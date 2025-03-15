@@ -1,8 +1,9 @@
 use crate::error::Error;
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::{
     env::VarError,
-    fs::File,
+    fs::{DirEntry, File},
     path::{Path, PathBuf},
 };
 
@@ -89,55 +90,50 @@ impl Config {
             .and_then(read_file)
     }
 
-    pub fn find_dir_recursive(
-        path: &Path,
-        depth: u8,
-        max_depth: u8,
-    ) -> Box<dyn Iterator<Item = PathBuf>> {
+    pub fn find_dir_recursive(path: &Path, depth: u8, max_depth: u8) -> Vec<PathBuf> {
         if max_depth == 0 {
-            let path_iter = std::iter::once(path.into());
-            return Box::new(path_iter);
+            return vec![path.to_path_buf()];
+        }
+
+        fn is_dir(de: &DirEntry) -> bool {
+            de.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
         }
 
         let dir_iter = path
             .read_dir()
             .unwrap()
-            .flatten()
-            .filter(|d| d.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-            .flat_map(move |e| {
+            .map_while(Result::ok)
+            .par_bridge()
+            .filter(is_dir)
+            .flat_map(|e| {
                 let path = e.path();
                 if depth < max_depth {
-                    let mut paths = vec![path.clone()];
-                    let child_iter = Self::find_dir_recursive(&path, depth + 1, max_depth);
-                    paths.extend(child_iter);
-                    paths
+                    let iter = std::iter::once(path.clone()).chain(Self::find_dir_recursive(
+                        &path,
+                        depth + 1,
+                        max_depth,
+                    ));
+
+                    Vec::from_iter(iter)
                 } else {
                     vec![path]
                 }
             });
 
-        Box::new(dir_iter)
+        dir_iter.collect()
     }
 
     pub fn find_dirs(&self) -> Result<Vec<PathBuf>, Error> {
-        let paths = self
-            .paths
-            .iter()
-            .map(|path| path.expand())
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let mut all_paths = vec![];
-
-        for p in paths {
+        let paths = self.paths.par_iter().map(|path| path.expand()).map(|path| {
+            let p = path.unwrap();
             let path = Path::new(p.path());
             if !path.exists() {
-                continue;
+                panic!("Path does not exist: {}", path.display());
             }
             let depth = p.depth(self.settings.default_depth);
-            let p = Self::find_dir_recursive(path, 1, depth);
-            all_paths.extend(p);
-        }
+            Self::find_dir_recursive(path, 1, depth)
+        });
 
-        Ok(all_paths)
+        Ok(paths.flatten().collect())
     }
 }
