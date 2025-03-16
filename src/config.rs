@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::{
     env::VarError,
     fs::{DirEntry, File},
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
@@ -17,7 +18,11 @@ pub struct Settings {
 #[serde(untagged)]
 pub enum SearchPath {
     Simple(String),
-    Complex { path: String, depth: Option<u8> },
+    Complex {
+        path: String,
+        depth: Option<u8>,
+        show_hidden: Option<bool>,
+    },
 }
 impl SearchPath {
     pub fn depth(&self, default: u8) -> u8 {
@@ -43,12 +48,31 @@ impl SearchPath {
 
         match self {
             Self::Simple(s) => Ok(Self::Simple(expand(s)?)),
-            Self::Complex { path, depth } => Ok(Self::Complex {
+            Self::Complex {
+                path,
+                depth,
+                show_hidden,
+            } => Ok(Self::Complex {
                 path: expand(path)?,
                 depth: *depth,
+                show_hidden: *show_hidden,
             }),
         }
     }
+
+    pub fn show_hidden(&self) -> bool {
+        match self {
+            Self::Simple(_) => false,
+            Self::Complex { show_hidden, .. } => show_hidden.unwrap_or(false),
+        }
+    }
+}
+
+fn is_hidden_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref()
+        .file_name()
+        .map(|n| n.as_bytes()[0] == b'.')
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -90,7 +114,12 @@ impl Config {
             .and_then(read_file)
     }
 
-    pub fn find_dir_recursive(path: &Path, depth: u8, max_depth: u8) -> Vec<PathBuf> {
+    pub fn find_dir_recursive(
+        show_hidden: bool,
+        path: &Path,
+        depth: u8,
+        max_depth: u8,
+    ) -> Vec<PathBuf> {
         if max_depth == 0 {
             return vec![path.to_path_buf()];
         }
@@ -105,10 +134,18 @@ impl Config {
             .map_while(Result::ok)
             .par_bridge()
             .filter(is_dir)
+            .filter(|x| {
+                if show_hidden {
+                    true
+                } else {
+                    !is_hidden_path(x.path())
+                }
+            })
             .flat_map(|e| {
                 let path = e.path();
                 if depth < max_depth {
                     let iter = std::iter::once(path.clone()).chain(Self::find_dir_recursive(
+                        show_hidden,
                         &path,
                         depth + 1,
                         max_depth,
@@ -131,9 +168,22 @@ impl Config {
                 panic!("Path does not exist: {}", path.display());
             }
             let depth = p.depth(self.settings.default_depth);
-            Self::find_dir_recursive(path, 1, depth)
+            Self::find_dir_recursive(p.show_hidden(), path, 1, depth)
         });
 
         Ok(paths.flatten().collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::is_hidden_path;
+
+    #[test]
+    fn hidden_path_test() {
+        assert!(is_hidden_path(".hidden"));
+        assert!(!is_hidden_path("not_hidden"));
+        assert!(is_hidden_path("a/b/.c"));
+        assert!(!is_hidden_path("a/b/c"));
     }
 }

@@ -9,6 +9,7 @@ trait SearchPathHelper {
         SearchPath::Complex {
             path: path.into(),
             depth,
+            show_hidden: Some(true),
         }
         .expand()
         .unwrap()

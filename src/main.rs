@@ -105,6 +105,8 @@ mod tests {
                 - path: second
                 - path: third
                   depth: 2
+                - path: fourth
+                  show_hidden: true
         "#;
         let yml = serde_yml::from_str::<Config>(yml)?;
 
@@ -119,11 +121,18 @@ mod tests {
                     SearchPath::Simple("first".into()),
                     SearchPath::Complex {
                         path: "second".into(),
-                        depth: None
+                        depth: None,
+                        show_hidden: None,
                     },
                     SearchPath::Complex {
                         path: "third".into(),
-                        depth: Some(2)
+                        depth: Some(2),
+                        show_hidden: None,
+                    },
+                    SearchPath::Complex {
+                        path: "fourth".into(),
+                        depth: None,
+                        show_hidden: Some(true),
                     }
                 ]
             }
