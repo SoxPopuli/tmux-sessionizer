@@ -161,15 +161,19 @@ impl Config {
     }
 
     pub fn find_dirs(&self) -> Result<Vec<PathBuf>, Error> {
-        let paths = self.paths.par_iter().map(|path| path.expand()).map(|path| {
-            let p = path.unwrap();
-            let path = Path::new(p.path());
-            if !path.exists() {
-                panic!("Path does not exist: {}", path.display());
-            }
-            let depth = p.depth(self.settings.default_depth);
-            Self::find_dir_recursive(p.show_hidden(), path, 1, depth)
-        });
+        let paths = self
+            .paths
+            .par_iter()
+            .map(|path| path.expand())
+            .filter_map(|x| match x {
+                Ok(p) if Path::new(p.path()).exists() => Some(p),
+                _ => None,
+            })
+            .map(|p| {
+                let path = Path::new(p.path());
+                let depth = p.depth(self.settings.default_depth);
+                Self::find_dir_recursive(p.show_hidden(), path, 1, depth)
+            });
 
         Ok(paths.flatten().collect())
     }
