@@ -32,10 +32,10 @@ impl SearchPath {
         }
     }
 
-    pub fn path(&self) -> &str {
+    pub fn path(&self) -> &Path {
         match self {
-            Self::Simple(s) => s.as_str(),
-            Self::Complex { path, .. } => path.as_str(),
+            Self::Simple(s) => Path::new(s.as_str()),
+            Self::Complex { path, .. } => Path::new(path.as_str()),
         }
     }
 
@@ -166,13 +166,12 @@ impl Config {
             .par_iter()
             .map(|path| path.expand())
             .filter_map(|x| match x {
-                Ok(p) if Path::new(p.path()).exists() => Some(p),
+                Ok(p) if p.path().exists() => Some(p),
                 _ => None,
             })
             .map(|p| {
-                let path = Path::new(p.path());
                 let depth = p.depth(self.settings.default_depth);
-                Self::find_dir_recursive(p.show_hidden(), path, 1, depth)
+                Self::find_dir_recursive(p.show_hidden(), p.path(), 1, depth)
             });
 
         Ok(paths.flatten().collect())
