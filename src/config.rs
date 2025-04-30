@@ -171,7 +171,11 @@ impl Config {
             })
             .map(|p| {
                 let depth = p.depth(self.settings.default_depth);
-                Self::find_dir_recursive(p.show_hidden(), p.path(), 1, depth)
+                let mut paths = Self::find_dir_recursive(p.show_hidden(), p.path(), 1, depth);
+
+                paths.push(p.path().to_path_buf());
+
+                paths
             });
 
         Ok(paths.flatten().collect())
