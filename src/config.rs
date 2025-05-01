@@ -121,7 +121,7 @@ impl Config {
         max_depth: u8,
     ) -> Vec<PathBuf> {
         if max_depth == 0 {
-            return vec![path.to_path_buf()];
+            return vec![];
         }
 
         fn is_dir(de: &DirEntry) -> bool {
