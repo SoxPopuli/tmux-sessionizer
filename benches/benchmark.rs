@@ -1,4 +1,5 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 
 trait SearchPathHelper {
     fn simple(path: impl Into<String>) -> SearchPath {
@@ -39,5 +40,11 @@ fn find_all_dirs(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, find_all_dirs);
+fn read_config(c: &mut Criterion) {
+    c.bench_function("read_config", |b| {
+        b.iter(|| black_box(Config::try_open()));
+    });
+}
+
+criterion_group!(benches, find_all_dirs, read_config);
 criterion_main!(benches);

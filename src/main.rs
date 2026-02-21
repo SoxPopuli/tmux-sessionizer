@@ -1,6 +1,7 @@
 mod config;
 mod error;
 use config::{Config, Settings};
+mod binary;
 mod tmux;
 
 use std::{
@@ -8,6 +9,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+
+use crate::config::CacheStatus;
 
 fn run_finder(Settings { picker, .. }: &Settings, paths: &[PathBuf]) -> Option<PathBuf> {
     let picker = picker.as_deref().unwrap_or("fzf-tmux -p 50%");
@@ -65,7 +68,10 @@ fn get_dir_name(dir: &Path) -> String {
 }
 
 fn main() {
-    let config = Config::try_open().unwrap();
+    let (cache_status, config) = Config::try_open().unwrap();
+    if cache_status == CacheStatus::Miss {
+        config.cache_binary().expect("Failed to save cache file");
+    }
     let paths = config.find_dirs().unwrap();
 
     let selected_path = if let Some(path) = run_finder(&config.settings, &paths) {
