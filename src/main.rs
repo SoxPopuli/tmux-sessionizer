@@ -74,7 +74,7 @@ enum ArgCommand {
 }
 
 #[derive(Debug, Parser)]
-#[command(arg_required_else_help(false))]
+#[command(arg_required_else_help(false), version)]
 struct Args {
     #[command(subcommand)]
     command: Option<ArgCommand>,
